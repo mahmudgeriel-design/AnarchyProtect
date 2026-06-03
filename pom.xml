@@ -14,14 +14,30 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+    <repositories>
+        <!-- Репозиторий для скачивания чат-компонентов Bungee -->
+        <repository>
+            <id>bungeecord-repo</id>
+            <url>https://sonatype.org</url>
+        </repository>
+    </repositories>
+
     <dependencies>
-        <!-- Жестко берем библиотеку из твоей папки libs, полностью игнорируя внешние репозитории -->
+        <!-- Твой локальный файл API -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
             <version>1.16.5-R0.1-SNAPSHOT</version>
             <scope>system</scope>
             <systemPath>${project.basedir}/libs/paper-api.jar</systemPath>
+        </dependency>
+        
+        <!-- Фикс ошибки: добавляем недостающий BaseComponent -->
+        <dependency>
+            <groupId>net.md-5</groupId>
+            <artifactId>bungeecord-chat</artifactId>
+            <version>1.16-R0.4</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 
