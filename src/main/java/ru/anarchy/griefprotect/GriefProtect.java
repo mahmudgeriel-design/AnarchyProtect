@@ -22,7 +22,6 @@ import java.util.*;
 
 public class GriefProtect extends JavaPlugin implements Listener, CommandExecutor {
 
-    // Хранилище заприваченных блоков: Координаты блока -> UUID владельца
     private final Map<Location, UUID> claimBlocks = new HashMap<>();
     private final Map<UUID, Location> lastPlayerBlock = new HashMap<>();
     private final String PREFIX = "§b§lFrostWorld §8» §7";
@@ -30,7 +29,9 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
     @Override
     public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);
-        if (getCommand("gprotect") != null) getCommand("gprotect").setExecutor(this);
+        if (getCommand("gprotect") != null) {
+            getCommand("gprotect").setExecutor(this);
+        }
     }
 
     @Override
@@ -46,10 +47,18 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
                 return true;
             }
             int amount;
-            try { amount = Integer.parseInt(args[3]); } catch (Exception e) { return true; }
+            try { 
+                amount = Integer.parseInt(args[3]); 
+            } catch (Exception e) { 
+                sender.sendMessage(PREFIX + "§cНеверное количество.");
+                return true; 
+            }
             
             Material mat = Material.matchMaterial(args[2].toUpperCase() + "_BLOCK");
-            if (mat == null || !isProtectBlock(mat)) return true;
+            if (mat == null || !isProtectBlock(mat)) {
+                sender.sendMessage(PREFIX + "§cНеверный тип блока.");
+                return true;
+            }
 
             ItemStack item = new ItemStack(mat, amount);
             ItemMeta meta = item.getItemMeta();
@@ -58,8 +67,10 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
                 item.setItemMeta(meta);
             }
             target.getInventory().addItem(item);
+            sender.sendMessage(PREFIX + "§aВыдано!");
             return true;
         }
+        sender.sendMessage("§c/gprotect give [ник] [iron/gold/diamond/emerald] [кол-во]");
         return true;
     }
 
@@ -95,7 +106,6 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
     public void onBlockPlace(BlockPlaceEvent event) {
         Block block = event.getBlock();
         if (!isProtectBlock(block.getType())) {
-            // Проверка защиты от постройки в чужом РГ
             for (Location blockLoc : claimBlocks.keySet()) {
                 int radius = getRadius(blockLoc.getBlock().getType());
                 if (Math.abs(blockLoc.getBlockX() - block.getX()) <= radius && Math.abs(blockLoc.getBlockZ() - block.getZ()) <= radius) {
@@ -108,8 +118,6 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
             }
             return;
         }
-        
-        // Установка своего блока привата
         claimBlocks.put(block.getLocation(), event.getPlayer().getUniqueId());
         event.getPlayer().sendMessage(PREFIX + "Блок установлен! Радиус: §b" + getRadius(block.getType()));
     }
@@ -122,8 +130,6 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
             event.getPlayer().sendMessage(PREFIX + "Приват снят.");
             return;
         }
-        
-        // Защита от поломки чужих блоков
         for (Location blockLoc : claimBlocks.keySet()) {
             int radius = getRadius(blockLoc.getBlock().getType());
             if (Math.abs(blockLoc.getBlockX() - block.getX()) <= radius && Math.abs(blockLoc.getBlockZ() - block.getZ()) <= radius) {
@@ -137,8 +143,6 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
 
     @EventHandler
     public void onEntityExplode(EntityExplodeEvent event) {
-        // КРИТИЧЕСКИ ДЛЯ ГРИФА: Взрывы РАЗРЕШЕНЫ, ТНТ ломает любые блоки.
-        // Если взрывается сам блок привата — удаляем его из памяти сервера
         for (Block b : event.blockList()) {
             if (isProtectBlock(b.getType()) && claimBlocks.containsKey(b.getLocation())) {
                 claimBlocks.remove(b.getLocation());
