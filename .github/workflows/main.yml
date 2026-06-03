@@ -19,9 +19,11 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Clean and Build with Maven
-      run: mvn clean package -B --file pom.xml
-
+    - name: Purge corrupt dependencies and Build
+      run: |
+        mvn dependency:purge-local-repository -B -DactTransitively=false -DreResolve=false --file pom.xml || true
+        mvn clean package -B --file pom.xml
+        
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
