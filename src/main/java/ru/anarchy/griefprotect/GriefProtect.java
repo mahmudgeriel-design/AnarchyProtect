@@ -4,6 +4,9 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
+import org.bukkit.boss.BossBar;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -13,7 +16,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
-import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -23,7 +26,10 @@ import java.util.*;
 public class GriefProtect extends JavaPlugin implements Listener, CommandExecutor {
 
     private final Map<Location, UUID> claimBlocks = new HashMap<>();
-    private final Map<UUID, Location> lastPlayerBlock = new HashMap<>();
+    
+    // Хранилище боссбаров для каждого игрока, чтобы текст горел всегда сверху
+    private final Map<UUID, BossBar> playerBars = new HashMap<>();
+    
     private final String PREFIX = "§b§lFrostWorld §8» §7";
 
     @Override
@@ -31,6 +37,70 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
         getServer().getPluginManager().registerEvents(this, this);
         if (getCommand("gprotect") != null) {
             getCommand("gprotect").setExecutor(this);
+        }
+
+        // БЕСКОНЕЧНЫЙ ТАЙМЕР (Срабатывает каждые 5 тиков = 4 раза в секунду для плавной смены зон)
+        Bukkit.getScheduler().runTaskTimer(this, () -> {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                Location loc = player.getLocation();
+                Location activeCenter = null;
+
+                // 1. Проверяем, находится ли игрок на Спавне (если у тебя мир спавна называется "world" и координаты около нуля)
+                // Если у тебя спавн в другом мире, замени "world" на его название
+                boolean isSpawn = loc.getWorld().getName().equalsIgnoreCase("world") 
+                        && loc.getX() >= -150 && loc.getX() <= 150 
+                        && loc.getZ() >= -150 && loc.getZ() <= 150;
+
+                // 2. Проверяем, находится ли игрок в регионе от блока привата
+                for (Location blockLoc : claimBlocks.keySet()) {
+                    int radius = getRadius(blockLoc.getBlock().getType());
+                    if (Math.abs(blockLoc.getBlockX() - loc.getBlockX()) <= radius && 
+                        Math.abs(blockLoc.getBlockZ() - loc.getBlockZ()) <= radius) {
+                        activeCenter = blockLoc;
+                        break;
+                    }
+                }
+
+                // Получаем или создаем боссбар для игрока
+                BossBar bossBar = playerBars.computeIfAbsent(player.getUniqueId(), id -> {
+                    // Создаем пустой белый боссбар
+                    BossBar bar = Bukkit.createBossBar("", BarColor.WHITE, BarStyle.SOLID);
+                    bar.addPlayer(player);
+                    return bar;
+                });
+
+                // Делаем полоску невидимой (progress = 0), чтобы остался ТОЛЬКО текст вверху экрана
+                bossBar.setProgress(0.0); 
+
+                // Меняем текст в зависимости от того, где стоит игрок
+                if (isSpawn) {
+                    bossBar.setTitle("§f[ §e§lСпавн §f]");
+                } else if (activeRegionCenter != null) {
+                    UUID ownerUUID = claimBlocks.get(activeRegionCenter);
+                    String owner = Bukkit.getOfflinePlayer(ownerUUID).getName();
+                    bossBar.setTitle("§f[ §c§lРегион: §f" + owner + " §f]");
+                } else {
+                    bossBar.setTitle("§f[ §a§lСвободная зона §f]");
+                }
+            }
+        }, 0L, 5L); 
+    }
+
+    @Override
+    public void onDisable() {
+        // Очищаем полоски у всех при перезагрузке
+        for (BossBar bar : playerBars.values()) {
+            bar.removeAll();
+        }
+        playerBars.clear();
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        UUID uuid = event.getPlayer().getUniqueId();
+        if (playerBars.containsKey(uuid)) {
+            playerBars.get(uuid).removeAll();
+            playerBars.remove(uuid);
         }
     }
 
@@ -72,34 +142,6 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
         }
         sender.sendMessage("§c/gprotect give [ник] [iron/gold/diamond/emerald] [кол-во]");
         return true;
-    }
-
-    @EventHandler
-    public void onPlayerMove(PlayerMoveEvent event) {
-        if (event.getFrom().getBlockX() == event.getTo().getBlockX() && event.getFrom().getBlockZ() == event.getTo().getBlockZ()) return;
-        Player player = event.getPlayer();
-        Location loc = event.getTo();
-        
-        Location activeCenter = null;
-        for (Location blockLoc : claimBlocks.keySet()) {
-            int radius = getRadius(blockLoc.getBlock().getType());
-            if (Math.abs(blockLoc.getBlockX() - loc.getBlockX()) <= radius && Math.abs(blockLoc.getBlockZ() - loc.getBlockZ()) <= radius) {
-                activeCenter = blockLoc;
-                break;
-            }
-        }
-
-        Location lastBlock = lastPlayerBlock.get(player.getUniqueId());
-        if (activeCenter != lastBlock) {
-            lastPlayerBlock.put(player.getUniqueId(), activeCenter);
-            if (activeCenter != null) {
-                UUID ownerUUID = claimBlocks.get(activeCenter);
-                String owner = Bukkit.getOfflinePlayer(ownerUUID).getName();
-                player.sendTitle("§c§lЧУЖАЯ ТЕРРИТОРИЯ", "§7Владелец §8» §f" + owner, 10, 35, 10);
-            } else {
-                player.sendTitle("§e§lСВОБОДНАЯ ТЕРРИТОРИЯ", "§7Здесь можно строить базу", 10, 35, 10);
-            }
-        }
     }
 
     @EventHandler
