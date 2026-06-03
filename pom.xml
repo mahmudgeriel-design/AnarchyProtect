@@ -15,9 +15,18 @@
     </properties>
 
     <repositories>
+        <!-- Настоящие, прямые ссылки на хранилища артефактов -->
         <repository>
-            <id>papermc</id>
-            <url>https://papermc.io</url>
+            <id>spigotmc-repo</id>
+            <url>https://spigotmc.org</url>
+        </repository>
+        <repository>
+            <id>sonatype-snapshots</id>
+            <url>https://sonatype.org</url>
+        </repository>
+        <repository>
+            <id>enginehub-maven</id>
+            <url>https://enginehub.org</url>
         </repository>
         <repository>
             <id>codemc-repo</id>
@@ -27,31 +36,31 @@
             <id>jitpack.io</id>
             <url>https://jitpack.io</url>
         </repository>
-        <repository>
-            <id>enginehub-maven</id>
-            <url>https://enginehub.org</url>
-        </repository>
     </repositories>
 
     <dependencies>
+        <!-- Чистый Spigot-API вместо Paper-API, чтобы обойти битые ссылки -->
         <dependency>
-            <groupId>io.papermc.paper</groupId>
-            <artifactId>paper-api</artifactId>
+            <groupId>org.spigotmc</groupId>
+            <artifactId>spigot-api</artifactId>
             <version>1.16.5-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
+        <!-- WorldGuard -->
         <dependency>
-            <groupId>com.sk89q.worldguard</groupId>
+            <groupId>com.sk89q.worldguard</artifactId>
             <artifactId>worldguard-bukkit</artifactId>
             <version>7.0.5</version>
             <scope>provided</scope>
         </dependency>
+        <!-- DecentHolograms -->
         <dependency>
             <groupId>com.github.DecentSoftware-eu</groupId>
             <artifactId>DecentHolograms</artifactId>
             <version>2.8.6</version>
             <scope>provided</scope>
         </dependency>
+        <!-- Item-NBT-API -->
         <dependency>
             <groupId>de.tr7zw</groupId>
             <artifactId>item-nbt-api-plugin</artifactId>
