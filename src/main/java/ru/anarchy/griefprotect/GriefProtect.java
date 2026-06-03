@@ -29,6 +29,9 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
     private final Map<UUID, BossBar> playerBars = new HashMap<>();
     private final String PREFIX = "§b§lFrostWorld §8» §7";
 
+    // Настройка высоты привата (10 блоков вверх и 10 блоков вниз от кристалла)
+    private final int HEIGHT_LIMIT = 10; 
+
     @Override
     public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);
@@ -47,13 +50,20 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
                         && loc.getX() >= -150 && loc.getX() <= 150 
                         && loc.getZ() >= -150 && loc.getZ() <= 150;
 
-                // Проверка регионов привата
+                // Проверка регионов привата с учетом ограниченной высоты
                 for (Location blockLoc : claimBlocks.keySet()) {
                     int radius = getRadius(blockLoc.getBlock().getType());
+                    
+                    // Проверяем сетку X и Z
                     if (Math.abs(blockLoc.getBlockX() - loc.getBlockX()) <= radius && 
                         Math.abs(blockLoc.getBlockZ() - loc.getBlockZ()) <= radius) {
-                        activeCenter = blockLoc;
-                        break;
+                        
+                        // ЖЕСТКАЯ ПРОВЕРКА ВЫСОТЫ (Игрок должен быть внутри диапазона высоты кристалла)
+                        if (loc.getBlockY() >= (blockLoc.getBlockY() - HEIGHT_LIMIT) && 
+                            loc.getBlockY() <= (blockLoc.getBlockY() + HEIGHT_LIMIT)) {
+                            activeCenter = blockLoc;
+                            break;
+                        }
                     }
                 }
 
@@ -63,12 +73,12 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
                     return bar;
                 });
 
-                bossBar.setProgress(0.0); // Прячем полоску, оставляем только текст
+                bossBar.setProgress(0.0); // Пустой боссбар, виден только текст
 
                 if (isSpawn) {
                     bossBar.setTitle("§f[ §e§lСпавн §f]");
-                } else if (activeCenter != null) { // Исправил опечатку тут
-                    UUID ownerUUID = claimBlocks.get(activeCenter); // И тут
+                } else if (activeCenter != null) {
+                    UUID ownerUUID = claimBlocks.get(activeCenter);
                     String owner = Bukkit.getOfflinePlayer(ownerUUID).getName();
                     bossBar.setTitle("§f[ §c§lРегион: §f" + owner + " §f]");
                 } else {
@@ -101,21 +111,21 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
             sender.sendMessage(PREFIX + "§cУ вас нет прав.");
             return true;
         }
-        if (args.length >= 4 && args[0].equalsIgnoreCase("give")) {
-            Player target = Bukkit.getPlayer(args[1]);
+        if (args.length >= 4 && args.equalsIgnoreCase("give")) {
+            Player target = Bukkit.getPlayer(args);
             if (target == null) {
                 sender.sendMessage(PREFIX + "§cИгрок оффлайн.");
                 return true;
             }
             int amount;
             try { 
-                amount = Integer.parseInt(args[3]); 
+                amount = Integer.parseInt(args); 
             } catch (Exception e) { 
                 sender.sendMessage(PREFIX + "§cНеверное количество.");
                 return true; 
             }
             
-            Material mat = Material.matchMaterial(args[2].toUpperCase() + "_BLOCK");
+            Material mat = Material.matchMaterial(args.toUpperCase() + "_BLOCK");
             if (mat == null || !isProtectBlock(mat)) {
                 sender.sendMessage(PREFIX + "§cНеверный тип блока.");
                 return true;
@@ -139,20 +149,28 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
     public void onBlockPlace(BlockPlaceEvent event) {
         Block block = event.getBlock();
         if (!isProtectBlock(block.getType())) {
+            // Проверка защиты от постройки чужаками в чужом регионе
             for (Location blockLoc : claimBlocks.keySet()) {
                 int radius = getRadius(blockLoc.getBlock().getType());
-                if (Math.abs(blockLoc.getBlockX() - block.getX()) <= radius && Math.abs(blockLoc.getBlockZ() - block.getZ()) <= radius) {
-                    if (!claimBlocks.get(blockLoc).equals(event.getPlayer().getUniqueId())) {
-                        event.setCancelled(true);
-                        event.getPlayer().sendMessage(PREFIX + "§cВы не можете строить на чужой территории!");
-                        return;
+                if (Math.abs(blockLoc.getBlockX() - block.getX()) <= radius && 
+                    Math.abs(blockLoc.getBlockZ() - block.getZ()) <= radius) {
+                    
+                    // Учитываем высоту при блокировке постройки
+                    if (block.getY() >= (blockLoc.getBlockY() - HEIGHT_LIMIT) && 
+                        block.getY() <= (blockLoc.getBlockY() + HEIGHT_LIMIT)) {
+                        
+                        if (!claimBlocks.get(blockLoc).equals(event.getPlayer().getUniqueId())) {
+                            event.setCancelled(true);
+                            event.getPlayer().sendMessage(PREFIX + "§cВы не можете строить на чужой территории!");
+                            return;
+                        }
                     }
                 }
             }
             return;
         }
         claimBlocks.put(block.getLocation(), event.getPlayer().getUniqueId());
-        event.getPlayer().sendMessage(PREFIX + "Блок установлен! Радиус: §b" + getRadius(block.getType()));
+        event.getPlayer().sendMessage(PREFIX + "Блок установлен! Радиус: §b" + getRadius(block.getType()) + " §7(Высота: +-" + HEIGHT_LIMIT + ")");
     }
 
     @EventHandler
@@ -163,12 +181,20 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
             event.getPlayer().sendMessage(PREFIX + "Приват снят.");
             return;
         }
+        // Проверка защиты от ломания чужаками
         for (Location blockLoc : claimBlocks.keySet()) {
             int radius = getRadius(blockLoc.getBlock().getType());
-            if (Math.abs(blockLoc.getBlockX() - block.getX()) <= radius && Math.abs(blockLoc.getBlockZ() - block.getZ()) <= radius) {
-                if (!claimBlocks.get(blockLoc).equals(event.getPlayer().getUniqueId())) {
-                    event.setCancelled(true);
-                    return;
+            if (Math.abs(blockLoc.getBlockX() - block.getX()) <= radius && 
+                Math.abs(blockLoc.getBlockZ() - block.getZ()) <= radius) {
+                
+                // Учитываем высоту при блокировке поломки
+                if (block.getY() >= (blockLoc.getBlockY() - HEIGHT_LIMIT) && 
+                    block.getY() <= (blockLoc.getBlockY() + HEIGHT_LIMIT)) {
+                    
+                    if (!claimBlocks.get(blockLoc).equals(event.getPlayer().getUniqueId())) {
+                        event.setCancelled(true);
+                        return;
+                    }
                 }
             }
         }
