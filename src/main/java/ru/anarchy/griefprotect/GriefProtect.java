@@ -26,10 +26,7 @@ import java.util.*;
 public class GriefProtect extends JavaPlugin implements Listener, CommandExecutor {
 
     private final Map<Location, UUID> claimBlocks = new HashMap<>();
-    
-    // Хранилище боссбаров для каждого игрока, чтобы текст горел всегда сверху
     private final Map<UUID, BossBar> playerBars = new HashMap<>();
-    
     private final String PREFIX = "§b§lFrostWorld §8» §7";
 
     @Override
@@ -39,19 +36,18 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
             getCommand("gprotect").setExecutor(this);
         }
 
-        // БЕСКОНЕЧНЫЙ ТАЙМЕР (Срабатывает каждые 5 тиков = 4 раза в секунду для плавной смены зон)
+        // БЕСКОНЕЧНЫЙ ТАЙМЕР ДЛЯ ИНДИКАТОРА СВЕРХУ ЭКРАНА
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 Location loc = player.getLocation();
                 Location activeCenter = null;
 
-                // 1. Проверяем, находится ли игрок на Спавне (если у тебя мир спавна называется "world" и координаты около нуля)
-                // Если у тебя спавн в другом мире, замени "world" на его название
+                // Проверка зоны спавна
                 boolean isSpawn = loc.getWorld().getName().equalsIgnoreCase("world") 
                         && loc.getX() >= -150 && loc.getX() <= 150 
                         && loc.getZ() >= -150 && loc.getZ() <= 150;
 
-                // 2. Проверяем, находится ли игрок в регионе от блока привата
+                // Проверка регионов привата
                 for (Location blockLoc : claimBlocks.keySet()) {
                     int radius = getRadius(blockLoc.getBlock().getType());
                     if (Math.abs(blockLoc.getBlockX() - loc.getBlockX()) <= radius && 
@@ -61,22 +57,18 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
                     }
                 }
 
-                // Получаем или создаем боссбар для игрока
                 BossBar bossBar = playerBars.computeIfAbsent(player.getUniqueId(), id -> {
-                    // Создаем пустой белый боссбар
                     BossBar bar = Bukkit.createBossBar("", BarColor.WHITE, BarStyle.SOLID);
                     bar.addPlayer(player);
                     return bar;
                 });
 
-                // Делаем полоску невидимой (progress = 0), чтобы остался ТОЛЬКО текст вверху экрана
-                bossBar.setProgress(0.0); 
+                bossBar.setProgress(0.0); // Прячем полоску, оставляем только текст
 
-                // Меняем текст в зависимости от того, где стоит игрок
                 if (isSpawn) {
                     bossBar.setTitle("§f[ §e§lСпавн §f]");
-                } else if (activeRegionCenter != null) {
-                    UUID ownerUUID = claimBlocks.get(activeRegionCenter);
+                } else if (activeCenter != null) { // Исправил опечатку тут
+                    UUID ownerUUID = claimBlocks.get(activeCenter); // И тут
                     String owner = Bukkit.getOfflinePlayer(ownerUUID).getName();
                     bossBar.setTitle("§f[ §c§lРегион: §f" + owner + " §f]");
                 } else {
@@ -88,7 +80,6 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
 
     @Override
     public void onDisable() {
-        // Очищаем полоски у всех при перезагрузке
         for (BossBar bar : playerBars.values()) {
             bar.removeAll();
         }
