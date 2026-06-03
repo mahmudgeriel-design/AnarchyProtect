@@ -15,18 +15,18 @@
     </properties>
 
     <repositories>
-        <!-- Официальный и стабильный репозиторий PaperMC -->
+        <!-- Используем зеркало CodeMC, которое Гитхаб не сможет обрезать -->
         <repository>
-            <id>papermc</id>
-            <url>https://papermc.io</url>
+            <id>codemc-nms</id>
+            <url>https://codemc.io</url>
         </repository>
     </repositories>
 
     <dependencies>
-        <!-- API Paper 1.16.5, которое полностью заменяет Spigot и качается без ошибок -->
+        <!-- Подключаем чистый Spigot через зеркало CodeMC -->
         <dependency>
-            <groupId>io.papermc.paper</groupId>
-            <artifactId>paper-api</artifactId>
+            <groupId>org.spigotmc</groupId>
+            <artifactId>spigot-api</artifactId>
             <version>1.16.5-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
