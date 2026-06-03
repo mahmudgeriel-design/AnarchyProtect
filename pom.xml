@@ -14,21 +14,14 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
-    <repositories>
-        <!-- Используем зеркало CodeMC, которое Гитхаб не сможет обрезать -->
-        <repository>
-            <id>codemc-nms</id>
-            <url>https://codemc.io</url>
-        </repository>
-    </repositories>
-
     <dependencies>
-        <!-- Подключаем чистый Spigot через зеркало CodeMC -->
+        <!-- Жестко берем библиотеку из твоей папки libs, полностью игнорируя внешние репозитории -->
         <dependency>
-            <groupId>org.spigotmc</groupId>
-            <artifactId>spigot-api</artifactId>
+            <groupId>io.papermc.paper</groupId>
+            <artifactId>paper-api</artifactId>
             <version>1.16.5-R0.1-SNAPSHOT</version>
-            <scope>provided</scope>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/paper-api.jar</systemPath>
         </dependency>
     </dependencies>
 
