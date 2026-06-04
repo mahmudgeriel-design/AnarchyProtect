@@ -10,6 +10,7 @@ import org.bukkit.boss.BossBar;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -26,10 +27,9 @@ import java.util.*;
 public class GriefProtect extends JavaPlugin implements Listener, CommandExecutor {
 
     private final Map<Location, UUID> claimBlocks = new HashMap<>();
+    private final Map<Location, List<UUID>> claimMembers = new HashMap<>();
     private final Map<UUID, BossBar> playerBars = new HashMap<>();
     private final String PREFIX = "§b§lFrostWorld §8» §7";
-
-    // Настройка высоты привата (10 блоков вверх и 10 блоков вниз от кристалла)
     private final int HEIGHT_LIMIT = 10; 
 
     @Override
@@ -39,26 +39,19 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
             getCommand("gprotect").setExecutor(this);
         }
 
-        // БЕСКОНЕЧНЫЙ ТАЙМЕР ДЛЯ ИНДИКАТОРА СВЕРХУ ЭКРАНА
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 Location loc = player.getLocation();
                 Location activeCenter = null;
 
-                // Проверка зоны спавна
                 boolean isSpawn = loc.getWorld().getName().equalsIgnoreCase("world") 
                         && loc.getX() >= -150 && loc.getX() <= 150 
                         && loc.getZ() >= -150 && loc.getZ() <= 150;
 
-                // Проверка регионов привата с учетом ограниченной высоты
                 for (Location blockLoc : claimBlocks.keySet()) {
                     int radius = getRadius(blockLoc.getBlock().getType());
-                    
-                    // Проверяем сетку X и Z
                     if (Math.abs(blockLoc.getBlockX() - loc.getBlockX()) <= radius && 
                         Math.abs(blockLoc.getBlockZ() - loc.getBlockZ()) <= radius) {
-                        
-                        // ЖЕСТКАЯ ПРОВЕРКА ВЫСОТЫ (Игрок должен быть внутри диапазона высоты кристалла)
                         if (loc.getBlockY() >= (blockLoc.getBlockY() - HEIGHT_LIMIT) && 
                             loc.getBlockY() <= (blockLoc.getBlockY() + HEIGHT_LIMIT)) {
                             activeCenter = blockLoc;
@@ -73,7 +66,7 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
                     return bar;
                 });
 
-                bossBar.setProgress(0.0); // Пустой боссбар, виден только текст
+                bossBar.setProgress(0.0);
 
                 if (isSpawn) {
                     bossBar.setTitle("§f[ §e§lСпавн §f]");
@@ -107,27 +100,89 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!sender.hasPermission("griefprotect.admin")) {
-            sender.sendMessage(PREFIX + "§cУ вас нет прав.");
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("Команда только для игроков.");
             return true;
         }
-        if (args.length >= 4 && args.equalsIgnoreCase("give")) {
-            Player target = Bukkit.getPlayer(args);
+
+        if (args.length == 0) {
+            player.sendMessage("§cИспользуйте: /gprotect [add/remove/give]");
+            return true;
+        }
+
+        if (args[0].equalsIgnoreCase("add")) {
+            if (!player.hasPermission("griefprotect.player")) {
+                player.sendMessage(PREFIX + "§cУ вас нет прав.");
+                return true;
+            }
+            if (args.length < 2) {
+                player.sendMessage(PREFIX + "§cУкажите ник игрока.");
+                return true;
+            }
+            Location blockLoc = findOwnedBlock(player.getUniqueId());
+            if (blockLoc == null) {
+                player.sendMessage(PREFIX + "§cВы должны стоять рядом со своим кристаллом привата.");
+                return true;
+            }
+            Player target = Bukkit.getPlayer(args[1]);
             if (target == null) {
-                sender.sendMessage(PREFIX + "§cИгрок оффлайн.");
+                player.sendMessage(PREFIX + "§cИгрок не найден.");
+                return true;
+            }
+            claimMembers.computeIfAbsent(blockLoc, k -> new ArrayList<>()).add(target.getUniqueId());
+            player.sendMessage(PREFIX + "§aИгрок §e" + target.getName() + " §aуспешно добавлен в ваш приват!");
+            return true;
+        }
+
+        if (args[0].equalsIgnoreCase("remove")) {
+            if (!player.hasPermission("griefprotect.player")) {
+                player.sendMessage(PREFIX + "§cУ вас нет прав.");
+                return true;
+            }
+            if (args.length < 2) {
+                player.sendMessage(PREFIX + "§cУкажите ник игрока.");
+                return true;
+            }
+            Location blockLoc = findOwnedBlock(player.getUniqueId());
+            if (blockLoc == null) {
+                player.sendMessage(PREFIX + "§cВы должны стоять рядом со своим кристаллом привата.");
+                return true;
+            }
+            Player target = Bukkit.getPlayer(args[1]);
+            UUID targetUUID = target != null ? target.getUniqueId() : Bukkit.getOfflinePlayer(args[1]).getUniqueId();
+            
+            if (claimMembers.containsKey(blockLoc) && claimMembers.get(blockLoc).remove(targetUUID)) {
+                player.sendMessage(PREFIX + "§aИгрок успешно удален из вашего привата.");
+            } else {
+                player.sendMessage(PREFIX + "§cЭтот игрок не записан в вашем привате.");
+            }
+            return true;
+        }
+        if (args[0].equalsIgnoreCase("give")) {
+            if (!player.hasPermission("griefprotect.admin")) {
+                player.sendMessage(PREFIX + "§cУ вас нет прав.");
+                return true;
+            }
+            if (args.length < 4) {
+                player.sendMessage("§cИспользуйте: /gprotect give [ник] [iron/gold/diamond/emerald] [кол-во]");
+                return true;
+            }
+            Player target = Bukkit.getPlayer(args[1]);
+            if (target == null) {
+                player.sendMessage(PREFIX + "§cИгрок оффлайн.");
                 return true;
             }
             int amount;
             try { 
-                amount = Integer.parseInt(args); 
+                amount = Integer.parseInt(args[3]); 
             } catch (Exception e) { 
-                sender.sendMessage(PREFIX + "§cНеверное количество.");
+                player.sendMessage(PREFIX + "§cНеверное количество.");
                 return true; 
             }
             
-            Material mat = Material.matchMaterial(args.toUpperCase() + "_BLOCK");
+            Material mat = Material.matchMaterial(args[2].toUpperCase() + "_BLOCK");
             if (mat == null || !isProtectBlock(mat)) {
-                sender.sendMessage(PREFIX + "§cНеверный тип блока.");
+                player.sendMessage(PREFIX + "§cНеверный тип блока.");
                 return true;
             }
 
@@ -138,30 +193,38 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
                 item.setItemMeta(meta);
             }
             target.getInventory().addItem(item);
-            sender.sendMessage(PREFIX + "§aВыдано!");
+            player.sendMessage(PREFIX + "§aВыдано!");
             return true;
         }
-        sender.sendMessage("§c/gprotect give [ник] [iron/gold/diamond/emerald] [кол-во]");
         return true;
+    }
+
+    private Location findOwnedBlock(UUID ownerUUID) {
+        for (Map.Entry<Location, UUID> entry : claimBlocks.entrySet()) {
+            if (entry.getValue().equals(ownerUUID)) return entry.getKey();
+        }
+        return null;
     }
 
     @EventHandler
     public void onBlockPlace(BlockPlaceEvent event) {
         Block block = event.getBlock();
+        Player player = event.getPlayer();
+
         if (!isProtectBlock(block.getType())) {
-            // Проверка защиты от постройки чужаками в чужом регионе
             for (Location blockLoc : claimBlocks.keySet()) {
                 int radius = getRadius(blockLoc.getBlock().getType());
                 if (Math.abs(blockLoc.getBlockX() - block.getX()) <= radius && 
                     Math.abs(blockLoc.getBlockZ() - block.getZ()) <= radius) {
-                    
-                    // Учитываем высоту при блокировке постройки
                     if (block.getY() >= (blockLoc.getBlockY() - HEIGHT_LIMIT) && 
                         block.getY() <= (blockLoc.getBlockY() + HEIGHT_LIMIT)) {
                         
-                        if (!claimBlocks.get(blockLoc).equals(event.getPlayer().getUniqueId())) {
+                        boolean isOwner = claimBlocks.get(blockLoc).equals(player.getUniqueId());
+                        boolean isMember = claimMembers.containsKey(blockLoc) && claimMembers.get(blockLoc).contains(player.getUniqueId());
+                        
+                        if (!isOwner && !isMember) {
                             event.setCancelled(true);
-                            event.getPlayer().sendMessage(PREFIX + "§cВы не можете строить на чужой территории!");
+                            player.sendMessage(PREFIX + "§cВы не можете строить на чужой территории!");
                             return;
                         }
                     }
@@ -169,29 +232,37 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
             }
             return;
         }
-        claimBlocks.put(block.getLocation(), event.getPlayer().getUniqueId());
-        event.getPlayer().sendMessage(PREFIX + "Блок установлен! Радиус: §b" + getRadius(block.getType()) + " §7(Высота: +-" + HEIGHT_LIMIT + ")");
+        claimBlocks.put(block.getLocation(), player.getUniqueId());
+        player.sendMessage(PREFIX + "Блок установлен! Радиус: §b" + getRadius(block.getType()));
     }
 
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         Block block = event.getBlock();
+        Player player = event.getPlayer();
+
         if (isProtectBlock(block.getType()) && claimBlocks.containsKey(block.getLocation())) {
-            claimBlocks.remove(block.getLocation());
-            event.getPlayer().sendMessage(PREFIX + "Приват снят.");
+            if (claimBlocks.get(block.getLocation()).equals(player.getUniqueId()) || player.hasPermission("gprotect.admin")) {
+                claimBlocks.remove(block.getLocation());
+                claimMembers.remove(block.getLocation());
+                player.sendMessage(PREFIX + "Приват снят.");
+            } else {
+                event.setCancelled(true);
+                player.sendMessage(PREFIX + "§cВы не можете сломать чужой кристалл привата!");
+            }
             return;
         }
-        // Проверка защиты от ломания чужаками
         for (Location blockLoc : claimBlocks.keySet()) {
             int radius = getRadius(blockLoc.getBlock().getType());
             if (Math.abs(blockLoc.getBlockX() - block.getX()) <= radius && 
                 Math.abs(blockLoc.getBlockZ() - block.getZ()) <= radius) {
-                
-                // Учитываем высоту при блокировке поломки
                 if (block.getY() >= (blockLoc.getBlockY() - HEIGHT_LIMIT) && 
                     block.getY() <= (blockLoc.getBlockY() + HEIGHT_LIMIT)) {
                     
-                    if (!claimBlocks.get(blockLoc).equals(event.getPlayer().getUniqueId())) {
+                    boolean isOwner = claimBlocks.get(blockLoc).equals(player.getUniqueId());
+                    boolean isMember = claimMembers.containsKey(blockLoc) && claimMembers.get(blockLoc).contains(player.getUniqueId());
+                    
+                    if (!isOwner && !isMember) {
                         event.setCancelled(true);
                         return;
                     }
@@ -202,9 +273,23 @@ public class GriefProtect extends JavaPlugin implements Listener, CommandExecuto
 
     @EventHandler
     public void onEntityExplode(EntityExplodeEvent event) {
+        if (event.getEntityType() != EntityType.PRIMED_TNT) {
+            for (Location blockLoc : claimBlocks.keySet()) {
+                int radius = getRadius(blockLoc.getBlock().getType());
+                event.blockList().removeIf(b -> 
+                    Math.abs(blockLoc.getBlockX() - b.getX()) <= radius && 
+                    Math.abs(blockLoc.getBlockZ() - b.getZ()) <= radius &&
+                    b.getY() >= (blockLoc.getBlockY() - HEIGHT_LIMIT) && 
+                    b.getY() <= (blockLoc.getBlockY() + HEIGHT_LIMIT)
+                );
+            }
+            return;
+        }
+
         for (Block b : event.blockList()) {
             if (isProtectBlock(b.getType()) && claimBlocks.containsKey(b.getLocation())) {
                 claimBlocks.remove(b.getLocation());
+                claimMembers.remove(b.getLocation());
             }
         }
     }
